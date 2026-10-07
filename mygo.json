@@ -1,0 +1,9 @@
+{
+  "name": "象棋残局",
+  "identifier": "com.chiyizi.xiangqi.desktop",
+  "version": "0.1.0",
+  "main": "./cmd/xiangqi",
+  "out": "build",
+  "macos": { "minimumSystemVersion": "14.0" },
+  "linux": { "categories": ["Game"], "comment": "离线象棋残局研究" }
+}

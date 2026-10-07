@@ -1,0 +1,14 @@
+/build/
+/dist/
+/xiangqi
+/resources/pikafish.nnue
+/resources/darwin-*/bin/
+/resources/windows-*/bin/
+/resources/linux-*/bin/
+/resources/fonts/*.ttf
+/resources/fonts/*.otf
+/vendor-engine/
+.DS_Store
+.lody/
+.env
+.env.*
