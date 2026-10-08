@@ -56,11 +56,11 @@ bash scripts/build-macos.sh
 ```sh
 python3 scripts/prepare-engine.py
 python3 scripts/build-engine.py --os linux --arch amd64
-go tool mygo build -platform linux/amd64
+python3 scripts/build-desktop.py --platform linux/amd64
 python3 scripts/package-release.py --os linux --arch amd64
 ```
 
-引擎需要 C++17 编译器：macOS 使用 Xcode clang++，Linux 使用 g++，Windows 使用 MinGW-w64 g++。Windows 安装包由 mygo 使用 NSIS 生成；未安装时会下载固定版本。`package-release.py` 校验应用内模型、许可证与引擎协议后，将发布包和校验文件写入 `dist/`。
+引擎需要 C++17 编译器：macOS 使用 Xcode clang++，Linux 使用 g++，Windows 使用 MinGW-w64 g++。Windows 安装包由 mygo 使用 NSIS 生成；未安装时会下载固定版本。`build-desktop.py` 调用 mygo 构建；Linux 使用 `xiangqi` 包名和命令，避免中文应用名被转换成通用的 `app`。`package-release.py` 校验应用内模型、许可证与引擎协议后，将发布包和校验文件写入 `dist/`。
 
 使用独立开发数据运行：
 

@@ -102,7 +102,7 @@ def main():
         collect(exactly_one(build.glob('*.tar.gz')), '.tar.gz')
 
     checksums = dist / (prefix + '.sha256')
-    checksums.write_text(''.join(f'{digest(path)}  {path.name}\n' for path in assets), encoding='utf-8')
+    checksums.write_text(''.join(f'{digest(path)}  {path.name}\n' for path in assets), encoding='utf-8', newline='\n')
     for path in assets:
         print(f'{path.relative_to(ROOT)} ({path.stat().st_size:,} bytes)')
 

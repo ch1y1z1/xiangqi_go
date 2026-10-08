@@ -92,7 +92,7 @@ jobs:
           XIANGQI_ENGINE_INTEGRATION: '1'
         run: go test -race -count=1 -timeout=5m -v ./internal/engine
       - name: Build app and installers
-        run: go tool mygo build -platform '${{ matrix.os }}/${{ matrix.arch }}'
+        run: python scripts/build-desktop.py --platform '${{ matrix.os }}/${{ matrix.arch }}'
       - name: Verify bundle and package release assets
         run: python scripts/package-release.py --os '${{ matrix.os }}' --arch '${{ matrix.arch }}'
       - name: Upload release assets
