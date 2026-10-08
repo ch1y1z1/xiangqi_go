@@ -1,0 +1,141 @@
+name: CI and Release
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            runner: macos-15
+          - os: darwin
+            arch: amd64
+            runner: macos-15-intel
+          - os: windows
+            arch: amd64
+            runner: windows-2025
+          - os: linux
+            arch: amd64
+            runner: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/package-release.py --check-version "$RELEASE_TAG"
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ p7zip-full libgtk-3-0t64 libwebkit2gtk-4.1-0 fonts-noto-cjk
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: command -v 7z || command -v 7zz || brew install sevenzip
+      - name: Configure Windows compiler and extractor
+        if: runner.os == 'Windows'
+        run: |
+          echo 'C:/msys64/mingw64/bin' >> "$GITHUB_PATH"
+          echo 'C:/Program Files/7-Zip' >> "$GITHUB_PATH"
+      - name: Check formatting
+        run: |
+          unformatted="$(git ls-files '*.go' | xargs gofmt -l)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests with race detector
+        run: go test -race -count=1 -timeout=5m ./...
+      - name: Cache verified NNUE
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: resources/pikafish.nnue
+          key: nnue-7d13d73569a9b571ba0eb20cf1596247bc2a42738967e61afef6482b231e900e
+          enableCrossOsArchive: true
+      - name: Prepare pinned engine and verify model
+        run: python scripts/prepare-engine.py
+      - name: Compile native engine
+        run: python scripts/build-engine.py --os '${{ matrix.os }}' --arch '${{ matrix.arch }}'
+      - name: Real engine integration tests
+        env:
+          XIANGQI_ENGINE_INTEGRATION: '1'
+        run: go test -race -count=1 -timeout=5m -v ./internal/engine
+      - name: Build app and installers
+        run: go tool mygo build -platform '${{ matrix.os }}/${{ matrix.arch }}'
+      - name: Verify bundle and package release assets
+        run: python scripts/package-release.py --os '${{ matrix.os }}' --arch '${{ matrix.arch }}'
+      - name: Upload release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Verify assets and generate checksums
+        run: |
+          cd dist
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 10
+          sha256sum --check ./*.sha256
+          cat ./*.sha256 | sort -k2 > SHA256SUMS.txt
+          rm -- *.sha256
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            test "$draft" = true
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --draft \
+              --verify-tag --title "象棋残局 $RELEASE_TAG" \
+              --notes-file .github/release-notes.md
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest

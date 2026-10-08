@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "main": "./cmd/xiangqi",
   "out": "build",
+  "icon": "resources/icon.png",
+  "resources": ["LICENSE"],
   "macos": { "minimumSystemVersion": "14.0" },
   "linux": { "categories": ["Game"], "comment": "离线象棋残局研究" }
 }

@@ -12,3 +12,4 @@
 .lody/
 .env
 .env.*
+__pycache__/
