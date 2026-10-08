@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMIT = '4c17cee11f888ae1d48a9494f2e2239f019f0a1f'
 SHA256 = '7d13d73569a9b571ba0eb20cf1596247bc2a42738967e61afef6482b231e900e'
 URL = 'https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-09-06/Pikafish.2026-09-06.7z'
+SOURCE_URL = 'https://github.com/official-pikafish/Pikafish.git'
 
 
 def digest(path):
@@ -25,24 +26,31 @@ def replace_once(path, before, after):
     path.write_text(text.replace(before, after), encoding='utf-8')
 
 
+def checkout_source(upstream, offline):
+    fresh = not (upstream / '.git').exists()
+    if fresh:
+        if offline:
+            raise SystemExit('Offline preparation requires vendor-engine/Pikafish')
+        upstream.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['git', 'clone', '--no-checkout', SOURCE_URL, str(upstream)], check=True)
+    # A new --no-checkout clone reports every tracked file as deleted until its
+    # first checkout. Only existing working trees can contain user changes.
+    if not fresh and subprocess.check_output(['git', '-C', str(upstream), 'status', '--porcelain'], text=True).strip():
+        raise SystemExit('Refusing to overwrite a modified Pikafish checkout')
+    if subprocess.run(['git', '-C', str(upstream), 'cat-file', '-e', COMMIT], capture_output=True).returncode:
+        if offline:
+            raise SystemExit('Pinned commit is unavailable offline')
+        subprocess.run(['git', '-C', str(upstream), 'fetch', 'origin', COMMIT], check=True)
+    subprocess.run(['git', '-C', str(upstream), 'checkout', '--detach', COMMIT], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--network', type=Path, help='Use an existing compatible NNUE (SHA checked)')
     parser.add_argument('--offline', action='store_true', help='Require existing pinned checkout and NNUE; never download')
     args = parser.parse_args()
     upstream = ROOT / 'vendor-engine/Pikafish'
-    if not (upstream / '.git').exists():
-        if args.offline:
-            parser.error('Offline preparation requires vendor-engine/Pikafish')
-        upstream.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['git', 'clone', '--no-checkout', 'https://github.com/official-pikafish/Pikafish.git', str(upstream)], check=True)
-    if subprocess.check_output(['git', '-C', str(upstream), 'status', '--porcelain'], text=True).strip():
-        parser.error('Refusing to overwrite a modified Pikafish checkout')
-    if subprocess.run(['git', '-C', str(upstream), 'cat-file', '-e', COMMIT], capture_output=True).returncode:
-        if args.offline:
-            parser.error('Pinned commit is unavailable offline')
-        subprocess.run(['git', '-C', str(upstream), 'fetch', 'origin', COMMIT], check=True)
-    subprocess.run(['git', '-C', str(upstream), 'checkout', '--detach', COMMIT], check=True)
+    checkout_source(upstream, args.offline)
     destination = ROOT / 'build/engine'
     if destination.exists():
         shutil.rmtree(destination)
