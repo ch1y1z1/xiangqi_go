@@ -6,7 +6,7 @@ Go + mygo 原生界面的象棋残局桌面应用，支持残局库、摆棋、�
 | --- | --- |
 | macOS 14+ Apple Silicon | `macos-arm64.dmg`，拖入 Applications |
 | macOS 14+ Intel | `macos-amd64.dmg`，拖入 Applications |
-| Windows x64 | `windows-amd64-setup.exe` 安装包，或解压 `windows-amd64.zip` 后运行 `象棋残局.exe`；请保留整个目录 |
+| Windows x64 | `windows-amd64-setup.exe` 安装包，或解压 `windows-amd64.zip` 后运行 `Xiangqi.exe`；请保留整个目录 |
 | Linux x64 | Debian/Ubuntu 使用 `linux-amd64.deb`，或解压 `linux-amd64.tar.gz` 后运行其中的应用 |
 
 Linux 需要 GTK 3、WebKitGTK 4.1 和中文字体。Ubuntu 24.04 可安装 `libgtk-3-0t64 libwebkit2gtk-4.1-0 fonts-noto-cjk`；保存图片识别密钥还需要已解锁的 Secret Service（如 GNOME Keyring）。Windows/Linux 的 HEIC/HEIF 图片需先转换为 JPEG 或 PNG。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build desktop installers with a unique Linux package/executable name."""
+"""Build desktop installers with portable Windows/Linux executable names."""
 import argparse
 import json
 from pathlib import Path
@@ -21,6 +21,12 @@ def main():
             # mygo turns an entirely Chinese name into the generic slug "app".
             # Keep the launcher label Chinese and give Debian/paths a unique slug.
             config['name'] = '象棋残局 (Xiangqi)'
+            path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
+        elif args.platform.startswith('windows/'):
+            # NSIS interprets mygo's BOM-less script using the runner's ANSI
+            # code page. ASCII paths avoid mismatched Chinese file names.
+            config = json.loads(original)
+            config['name'] = 'Xiangqi'
             path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
         subprocess.run(['go', 'tool', 'mygo', 'build', '-platform', args.platform], cwd=ROOT, check=True)
     finally:

@@ -60,7 +60,7 @@ python3 scripts/build-desktop.py --platform linux/amd64
 python3 scripts/package-release.py --os linux --arch amd64
 ```
 
-引擎需要 C++17 编译器：macOS 使用 Xcode clang++，Linux 使用 g++，Windows 使用 MinGW-w64 g++。Windows 安装包由 mygo 使用 NSIS 生成；未安装时会下载固定版本。`build-desktop.py` 调用 mygo 构建；Linux 使用 `xiangqi` 包名和命令，避免中文应用名被转换成通用的 `app`。`package-release.py` 校验应用内模型、许可证与引擎协议后，将发布包和校验文件写入 `dist/`。
+引擎需要 C++17 编译器：macOS 使用 Xcode clang++，Linux 使用 g++，Windows 使用 MinGW-w64 g++。Windows 安装包由 mygo 使用 NSIS 生成；未安装时会下载固定版本。`build-desktop.py` 调用 mygo 构建；Windows 主程序使用 `Xiangqi.exe`，避免安装器的中文路径编码问题；Linux 使用 `xiangqi` 包名和命令，避免中文应用名被转换成通用的 `app`。应用窗口继续使用中文名称。`package-release.py` 校验应用内模型、许可证与引擎协议后，将发布包和校验文件写入 `dist/`。
 
 使用独立开发数据运行：
 
@@ -68,7 +68,7 @@ python3 scripts/package-release.py --os linux --arch amd64
 go run ./cmd/xiangqi --resources-dir "$PWD/resources" --data-dir "$PWD/build/dev-data"
 ```
 
-macOS 的 HEIC 处理使用系统 `sips`，中文棋子优先使用系统楷体。Windows/Linux 使用系统中文字体回退，HEIC/HEIF 需先转换为 JPEG 或 PNG。
+macOS 的 HEIC 处理使用系统 `sips`。中文棋子优先加载本机已安装的楷体文件，缺失时使用系统中文字体回退，不触发可选字体下载；Apple 字体不随应用分发。Windows/Linux 的 HEIC/HEIF 需先转换为 JPEG 或 PNG。
 
 ## GitHub CI 与发布
 

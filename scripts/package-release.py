@@ -60,7 +60,7 @@ def main():
         require_file(bundle / 'Contents/MacOS' / config['name'])
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(bundle)], check=True)
     elif args.os == 'windows':
-        require_file(bundle / f'{config["name"]}.exe')
+        require_file(bundle / 'Xiangqi.exe')
     else:
         # mygo derives the Linux executable's slug from the display name.
         executables = [p for p in bundle.iterdir() if p.is_file() and not p.suffix and p.stat().st_mode & 0o111]

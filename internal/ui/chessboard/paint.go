@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-const pieceFamily = "Xiangqi Pieces, STKaiti, serif"
+// Optional system fonts can trigger a blocking Core Text download when looked
+// up by family name. Use the installed interface font until a local Kai face
+// has been explicitly registered before the first window is created.
+var pieceFamily = "system-ui"
 
 var (
 	teal     = ui.Hex("#386B61")

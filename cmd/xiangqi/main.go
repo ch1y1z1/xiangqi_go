@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	appui "github.com/ch1y1z1/xiangqi_go/internal/ui"
+	"github.com/ch1y1z1/xiangqi_go/internal/ui/chessboard"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -32,6 +33,7 @@ func main() {
 				log.Fatal(err)
 			}
 		}
+		chessboard.LoadSystemPieceFont()
 		app = appui.New(*data, *resources)
 		area := mygo.Screen.PrimaryDisplay().WorkArea
 		width, height := min(1440, area.Width-64), min(900, area.Height-64)
