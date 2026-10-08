@@ -28,7 +28,18 @@ def main():
             config = json.loads(original)
             config['name'] = 'Xiangqi'
             path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
-        subprocess.run(['go', 'tool', 'mygo', 'build', '-platform', args.platform], cwd=ROOT, check=True)
+        command = ['go', 'tool', 'mygo', 'build', '-platform', args.platform]
+        result = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding='utf-8', errors='replace')
+        print(result.stdout, end='', flush=True)
+        if result.returncode and args.platform.startswith('darwin/') and 'hdiutil detach' in result.stdout:
+            # Hosted Macs occasionally keep the temporary DMG volume busy.
+            # mygo creates a new staging directory on retry; compilation and
+            # other packaging failures still fail immediately.
+            print('Retrying transient macOS disk image detach failure', flush=True)
+            subprocess.run(command, cwd=ROOT, check=True)
+        else:
+            result.check_returncode()
     finally:
         path.write_bytes(original)
 
