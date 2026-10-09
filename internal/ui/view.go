@@ -437,7 +437,7 @@ func (a *App) editorTools(c *native.Context) {
 					}
 					b := native.ButtonBase(c).Grow(1).MinWidth(0).Height(67).Padding(4).Radius(10).Background(card).Disabled(remaining <= 0 || ed.saving).Children(func() {
 						native.Column(c).Gap(2).Center().Children(func() {
-							native.Text(c, kind.Glyph(side)).Font("Xiangqi Pieces, STKaiti, serif").FontSize(27).TextColor(col)
+							native.Text(c, kind.Glyph(side)).Font(chessboard.PieceFontFamily()).FontSize(27).TextColor(col)
 							native.Textf(c, "剩余 %d", max(0, remaining)).FontSize(11).TextColor(muted)
 						})
 					})

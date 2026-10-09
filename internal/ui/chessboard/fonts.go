@@ -8,6 +8,11 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// PieceFontFamily returns the locally registered piece font, or the system
+// interface font when no local Kai font has been loaded. Inventory labels use
+// it too, so they never look up an optional font by its system family name.
+func PieceFontFamily() string { return pieceFamily }
+
 // LoadSystemPieceFont uses an already installed Kai font without asking the OS
 // to find or download an optional face. Call before creating any board views.
 // Missing fonts keep the system interface font and its Chinese glyph fallback.
