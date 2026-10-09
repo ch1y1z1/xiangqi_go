@@ -12,48 +12,34 @@ import (
 func (a *App) View(c *native.Context) {
 	c.SetTheme(&theme)
 	w, _ := c.Size()
-	if c.Shortcut(native.Cmd, native.KeyN) {
-		a.newStudy()
-	}
-	if c.Shortcut(native.Cmd, native.KeyS) {
-		a.saveEditor(false)
-	}
-	if c.Shortcut(native.Cmd, native.KeyComma) {
-		a.openSettings()
-	}
-	if c.Shortcut(native.Cmd, native.KeyJ) && a.research != nil {
-		a.research.Recommend()
-	}
-	if c.Shortcut(native.Cmd|native.Shift, native.KeyF) {
-		a.flip()
-	}
-	if c.Shortcut(native.Alt, native.KeyLeft) && a.research != nil {
-		a.research.Back()
-	}
-	if c.Shortcut(native.Alt, native.KeyRight) {
-		a.forward()
-	}
-	if c.Shortcut(native.Cmd, native.KeyHome) && a.research != nil {
-		a.research.Root()
-	}
-	if c.Shortcut(0, native.KeyEscape) && a.research != nil {
-		a.research.Stop()
+	// Run actions after construction so saves see all bound edits and layout
+	// switches cannot change the model while its controls are still being built.
+	c.OnShortcut(native.Cmd, native.KeyN, a.newStudy)
+	c.OnShortcut(native.Cmd, native.KeyS, func() { a.saveEditor(false) })
+	c.OnShortcut(native.Cmd, native.KeyComma, a.openSettings)
+	c.OnShortcut(native.Cmd|native.Shift, native.KeyF, a.flip)
+	c.OnShortcut(native.Alt, native.KeyRight, a.forward)
+	if a.research != nil {
+		c.OnShortcut(native.Cmd, native.KeyJ, a.research.Recommend)
+		c.OnShortcut(native.Alt, native.KeyLeft, a.research.Back)
+		c.OnShortcut(native.Cmd, native.KeyHome, a.research.Root)
+		c.OnShortcut(0, native.KeyEscape, a.research.Stop)
 	}
 	if a.editor != nil && !a.editor.saving {
-		if c.Shortcut(native.Cmd, native.KeyZ) {
+		c.OnShortcut(native.Cmd, native.KeyZ, func() {
 			a.editor.board.Undo()
 			a.editor.dirty = true
-		}
-		if c.Shortcut(native.Cmd|native.Shift, native.KeyZ) {
+		})
+		c.OnShortcut(native.Cmd|native.Shift, native.KeyZ, func() {
 			a.editor.board.Redo()
 			a.editor.dirty = true
-		}
+		})
 	}
 	a.syncWindowTitle()
 	hasSidebar := !a.loading && a.showLibrary && w >= 1280
 	// These layouts have different element hierarchies. Give each its own
 	// identity so clipping, focus and paint state cannot cross between them.
-	native.Box(c).Key(hasSidebar).Fill().MinWidth(0).Children(func() {
+	native.Box(c.Key(hasSidebar)).Fill().MinWidth(0).Children(func() {
 		if hasSidebar {
 			split := native.Split(c, &a.prefs.LeftWidth, func() { a.sidebarPane(c) }, func() {
 				a.workspace(c, w-a.prefs.LeftWidth-1, true)
@@ -115,7 +101,7 @@ func (a *App) libraryView(c *native.Context) {
 		native.List(c, &a.library, len(studies), func(i int) {
 			study := studies[i]
 			selected := a.research != nil && a.research.Study.ID == study.ID || a.editor != nil && a.editor.original.ID == study.ID
-			row := native.Row(c).Key(study.ID).Gap(8).Padding(10).Radius(12).MinHeight(100).AlignItems(native.Center)
+			row := native.Row(c.Key(study.ID)).Gap(8).Padding(10).Radius(12).MinHeight(100).AlignItems(native.Center)
 			if selected {
 				row.Background(sidebarSelected)
 			} else if row.Hovered() {
@@ -148,9 +134,9 @@ func (a *App) libraryView(c *native.Context) {
 						native.Text(c, detail).FillWidth().FontSize(12).TextColor(muted).SingleLine().Tooltip(detail)
 					})
 				})
-				if button.Clicked() {
+				button.OnClick(func() {
 					a.guardEdit(func() { a.libraryDrawer = false; a.openStudy(study) })
-				}
+				})
 				moreMenu(c, study.Name+"的操作", func(m *native.Menu) { a.studyMenu(m, study) })
 			})
 		}).Grow(1).Gap(6).Children(func() {
@@ -461,10 +447,10 @@ func (a *App) editorTools(c *native.Context) {
 					if ed.board.PlacementKind == kind && ed.board.PlacementSide == side && remaining > 0 {
 						b.Border(1.5, teal)
 					}
-					if b.Clicked() {
+					b.OnClick(func() {
 						ed.board.Choose(kind, side)
 						ed.message = "放置" + side.Title() + kind.Glyph(side)
-					}
+					})
 				}
 				for i := min(row*4+4, len(domain.Kinds)); i < (row+1)*4; i++ {
 					native.Box(c).Grow(1)
@@ -519,7 +505,7 @@ func (a *App) studyTools(c *native.Context) {
 		if len(n.Children) > 1 {
 			label += " ⑂"
 		}
-		b := action(c, label, false, false, func() { s.Jump(n.ID) }).FillWidth().Key(n.ID).Tooltip(label)
+		b := action(c.Key(n.ID), label, false, false, func() { s.Jump(n.ID) }).FillWidth().Tooltip(label)
 		if n.ID == s.Study.CurrentID {
 			b.Background(teal.Alpha(0.12)).TextColor(teal)
 		}
@@ -549,7 +535,7 @@ func (a *App) studyTools(c *native.Context) {
 				if n == nil {
 					continue
 				}
-				native.Column(c).Key(id).Padding(12).Gap(5).Background(card).Radius(12).Children(func() {
+				native.Column(c.Key(id)).Padding(12).Gap(5).Background(card).Radius(12).Children(func() {
 					native.Row(c).Gap(8).Children(func() {
 						native.Text(c, s.Study.Label(*n)).Grow(1)
 						native.Text(c, s.EvalText(id)).TextColor(teal).Description(s.EvalDetail(id))
@@ -623,17 +609,14 @@ func (a *App) studyTools(c *native.Context) {
 }
 
 func (a *App) dialogs(c *native.Context) {
-	native.DialogBase(c, &a.libraryDrawer, func(back, panel *native.Element) {
+	native.DialogBase(c, &a.libraryDrawer, func(back, panel native.Element) {
 		back.Background(ink.Alpha(0.25))
 		panel.Width(360).MaxHeight(680).FillHeight().Background(paper).Radius(16)
 		a.libraryView(c)
 	})
 	native.Modal(c, &a.showRename, func() {
 		native.Text(c, "残局名称").FontSize(18).FontWeight(600)
-		input := native.TextInput(c, &a.renameValue).Width(330).AutoFocus().Label("新名称")
-		if input.Submitted() {
-			a.commitRename()
-		}
+		native.TextInput(c, &a.renameValue).Width(330).AutoFocus().Label("新名称").OnSubmit(a.commitRename)
 		native.Row(c).Gap(10).Justify(native.End).Children(func() {
 			action(c, "取消", false, false, func() { a.showRename = false })
 			action(c, "保存名称", true, false, a.commitRename)

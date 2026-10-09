@@ -76,7 +76,7 @@ func (a *App) workspaceTitleBar(c *native.Context, width float32, hasSidebar boo
 	})
 }
 
-func headerIcon(c *native.Context, icon *native.SVG, label string, disabled bool, fn func()) *native.Element {
+func headerIcon(c *native.Context, icon *native.SVG, label string, disabled bool, fn func()) native.Element {
 	e := native.ButtonBase(c).Size(30, 30).Shrink(0).Radius(6).TextColor(muted).Label(label).Tooltip(label).Disabled(disabled)
 	if e.Pressed() {
 		e.Background(ink.Alpha(0.10))
@@ -84,8 +84,8 @@ func headerIcon(c *native.Context, icon *native.SVG, label string, disabled bool
 		e.Background(ink.Alpha(0.06))
 	}
 	e.Children(func() { native.Icon(c, icon).Size(18, 18) })
-	if e.Clicked() && fn != nil {
-		fn()
+	if fn != nil {
+		e.OnClick(fn)
 	}
 	return e
 }
@@ -101,7 +101,7 @@ func sidebarCommand(c *native.Context, icon *native.SVG, label string, fn func()
 		native.Icon(c, icon).Size(18, 18).TextColor(muted).Shrink(0)
 		native.Text(c, label).Grow(1).MinWidth(0).FontSize(14).SingleLine()
 	})
-	if e.Clicked() && fn != nil {
-		fn()
+	if fn != nil {
+		e.OnClick(fn)
 	}
 }

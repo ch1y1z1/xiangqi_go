@@ -44,6 +44,7 @@ type Placement struct {
 // State must persist across frames, with a distinct instance for each board.
 // Its zero value is ready for use. It contains no game/rules state.
 type State struct {
+	handle              ui.Handle
 	sprites             []sprite
 	ghosts              []ghost
 	initialized         bool
@@ -91,12 +92,12 @@ func (l layout) square(p point) (domain.Square, bool) {
 // View returns a flexible element suitable for Grow(1), Fill or explicit Size.
 // Bounds is deliberately read in the handler, after layout, rather than cached
 // in View (where it would still describe the preceding frame).
-func View(c *ui.Context, s *State, o Options) *ui.Element {
+func View(c *ui.Context, s *State, o Options) ui.Element {
 	if s == nil {
 		panic("chessboard.View: persist a non-nil *State")
 	}
 	o = snapshotOptions(o)
-	e := ui.Box(c).MinWidth(0).MinHeight(0).Label("象棋棋盘").FocusRing(false)
+	e := ui.Box(c).Bind(&s.handle).MinWidth(0).MinHeight(0).Label("象棋棋盘").FocusRing(false)
 	now := c.Now()
 	reduced := c.Preferences().ReduceMotion
 	if !o.Interactive || (s.initialized && s.bottom != o.Bottom) {
@@ -104,10 +105,11 @@ func View(c *ui.Context, s *State, o Options) *ui.Element {
 	}
 	s.sync(o, now, reduced)
 	if o.Interactive {
+		handle := s.handle
 		e.Focusable().HandleInput(func(ev ui.InputEvent) bool {
-			r := e.Bounds()
+			r := handle.Bounds(c)
 			l := boardLayout(ui.Rect{W: r.W, H: r.H}, o.Bottom)
-			return s.input(ev, l, o, e.Focused(), time.Now(), reduced)
+			return s.input(ev, l, o, handle.Focused(c), time.Now(), reduced)
 		})
 	}
 	if o.OnImageDrop != nil {

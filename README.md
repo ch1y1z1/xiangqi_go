@@ -45,6 +45,8 @@ macOS 顶栏融入侧边栏：浅灰残局库背景从系统红黄绿贯通到�
 
 需要 Go 1.27.1、Xcode Command Line Tools、Python 3.11+。首次准备资源会下载固定 Pikafish 源码和 NNUE；下载模型需 `7z` 或 `7zz`，也可用 `python3 scripts/prepare-engine.py --network /path/to/pikafish.nnue` 提供校验匹配的现有模型。
 
+mygo 库和 Go 工具统一固定为 `v0.3.3`，包含 0.3.0 的 UI 生命周期迁移及后续输入时序修复。修改界面后运行 `go tool mygo vet .` 和 `go test -race ./...`；前者同时检查 Go 代码和 UI 控件/上下文生命周期，CI 使用相同检查。
+
 ```sh
 bash scripts/build-macos.sh
 ```

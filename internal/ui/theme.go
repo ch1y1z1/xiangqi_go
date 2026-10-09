@@ -26,8 +26,8 @@ var theme = func() native.Theme {
 	return t
 }()
 
-func action(c *native.Context, label string, primary, disabled bool, fn func()) *native.Element {
-	var e *native.Element
+func action(c *native.Context, label string, primary, disabled bool, fn func()) native.Element {
+	var e native.Element
 	if primary {
 		e = native.PrimaryButton(c, "")
 	} else {
@@ -35,15 +35,15 @@ func action(c *native.Context, label string, primary, disabled bool, fn func()) 
 	}
 	e.Children(func() { native.Text(c, label).FillWidth().TextAlign(native.Center).SingleLine() })
 	e.MinHeight(38).Disabled(disabled)
-	if e.Clicked() && fn != nil {
-		fn()
+	if fn != nil {
+		e.OnClick(fn)
 	}
 	return e
 }
 
 // A compact overflow button has its own icon: MenuButton adds a chevron and
 // default padding that cannot fit beside an ellipsis in a narrow library row.
-func moreMenu(c *native.Context, label string, build func(*native.Menu)) *native.Element {
+func moreMenu(c *native.Context, label string, build func(*native.Menu)) native.Element {
 	e := native.ButtonBase(c).Size(32, 32).Shrink(0).Radius(6).Label(label).Tooltip(label)
 	if e.Pressed() {
 		e.Background(theme.SurfacePressed)

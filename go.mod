@@ -3,7 +3,7 @@ module github.com/ch1y1z1/xiangqi_go
 go 1.27.1
 
 require (
-	github.com/egoist/mygo v0.2.17-0.20261007083808-49b7a7fa599b
+	github.com/egoist/mygo v0.3.3
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/image v0.46.0
 )

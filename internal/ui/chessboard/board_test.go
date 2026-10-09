@@ -29,7 +29,7 @@ func newBoardTester(s *State, o *Options) (*ui.Tester, func(domain.Square) point
 	tt := ui.NewTester(func(c *ui.Context) {
 		ui.Column(c).Fill().Padding(31).Children(func() {
 			ui.Text(c, "棋盘交互探针").Height(28)
-			View(c, s, *o).Key("board").Grow(1)
+			View(c.Key("board"), s, *o).Grow(1)
 		})
 	}, 620, 720)
 	// Includes a nonzero element origin to catch window/local coordinate mistakes.

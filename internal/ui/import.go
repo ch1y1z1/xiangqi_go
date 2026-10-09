@@ -176,7 +176,7 @@ func (a *App) importDialog(c *native.Context) {
 			s.zoom = 1
 		}
 	}
-	native.DialogBase(c, &s.open, func(back, panel *native.Element) {
+	native.DialogBase(c, &s.open, func(back, panel native.Element) {
 		w, h := c.Size()
 		back.Background(ink.Alpha(.25))
 		panel.Width(min(float32(820), w-48)).Height(min(float32(760), h-64)).Padding(22).Gap(12).Radius(16).Background(paper)
@@ -252,7 +252,7 @@ func (a *App) importDialog(c *native.Context) {
 }
 
 func (a *App) sourceDialog(c *native.Context) {
-	native.DialogBase(c, &a.sourceOpen, func(back, panel *native.Element) {
+	native.DialogBase(c, &a.sourceOpen, func(back, panel native.Element) {
 		w, h := c.Size()
 		back.Background(ink.Alpha(.25))
 		panel.Width(w - 64).Height(h - 64).Padding(18).Gap(10).Radius(16).Background(paper)
@@ -269,7 +269,7 @@ func (a *App) sourceDialog(c *native.Context) {
 	})
 }
 
-func imageViewer(c *native.Context, b *native.Bitmap, zoom, panX, panY *float32) *native.Element {
+func imageViewer(c *native.Context, b *native.Bitmap, zoom, panX, panY *float32) native.Element {
 	e := native.Column(c).Gap(8).MinHeight(0)
 	e.Children(func() {
 		zone := native.Box(c).Grow(1).FillWidth().MinHeight(0).Clip().Background(native.Hex("#EDE7DC")).Radius(12).Label("图片预览：滚轮缩放，拖动平移，双击适配")
