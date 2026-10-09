@@ -6,7 +6,7 @@
 
 `build/darwin-arm64/象棋残局.app`，版本 0.1.0，macOS 14+，约 61.5 MB。包含 mygo Native UI 主程序、独立 C++ Pikafish 辅助程序、匹配 NNUE、图标及许可；不使用 WebView。
 
-mygo 固定提交 `49b7a7fa599b689720b1fafcc3a5f4fea7fcb94c`，Pikafish 固定提交 `4c17cee11f888ae1d48a9494f2e2239f019f0a1f`，NNUE SHA-256 为 `7d13d73569a9b571ba0eb20cf1596247bc2a42738967e61afef6482b231e900e`。
+下述原始验收使用 mygo 固定提交 `49b7a7fa599b689720b1fafcc3a5f4fea7fcb94c`。当前库和 Go 工具已升级至 `v0.3.3`，迁移了 0.3.0 的控件值类型、构造前键及棋盘持久 Handle；界面按钮和全局快捷键在构建后执行，保存可读取最新输入。设置密钥按服务分别赋予控件键，CI 使用 `go tool mygo vet .` 检查 UI 生命周期。Pikafish 固定提交 `4c17cee11f888ae1d48a9494f2e2239f019f0a1f`，NNUE SHA-256 为 `7d13d73569a9b571ba0eb20cf1596247bc2a42738967e61afef6482b231e900e`。
 
 应用入口为 `cmd/xiangqi/main.go`；`internal/ui` 接入原有领域、持久化、会话、引擎、识别及棋盘模块。补齐系统设置、图片导入/原图预览、HEIC 文件处理、应用生命周期、菜单和编辑命令。
 

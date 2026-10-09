@@ -35,7 +35,7 @@ func (a *App) openSettings() {
 
 func (a *App) settingsDialog(c *native.Context) {
 	s := &a.settings
-	native.DialogBase(c, &s.open, func(back, panel *native.Element) {
+	native.DialogBase(c, &s.open, func(back, panel native.Element) {
 		w, h := c.Size()
 		back.Background(ink.Alpha(.25))
 		panel.Width(min(float32(620), w-48)).MaxHeight(h - 64).Padding(24).Gap(12).Radius(16).Background(paper)
@@ -69,7 +69,7 @@ func (a *App) settingsDialog(c *native.Context) {
 			}
 			section(c, "API 密钥")
 			key := s.keys[r.Provider]
-			if native.TextInput(c, &key).Password().Placeholder("填写新密钥；留空保留已保存密钥").FillWidth().Label("API 密钥").Disabled(s.saving).Changed() {
+			if native.TextInput(c.Key(r.Provider), &key).Password().Placeholder("填写新密钥；留空保留已保存密钥").FillWidth().Label("API 密钥").Disabled(s.saving).Changed() {
 				s.keys[r.Provider] = key
 				s.remove[r.Provider] = false
 			}
