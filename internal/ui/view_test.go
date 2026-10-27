@@ -1,13 +1,102 @@
 package ui
 
 import (
+	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ch1y1z1/xiangqi_go/internal/domain"
 	"github.com/ch1y1z1/xiangqi_go/internal/recognition"
+	"github.com/ch1y1z1/xiangqi_go/internal/session"
 	"github.com/ch1y1z1/xiangqi_go/internal/store"
 	native "github.com/egoist/mygo/ui"
 )
+
+func TestNativeResearchControlAndUndo(t *testing.T) {
+	study := domain.NewStudy("托管回退测试", domain.InitialPieces(), domain.Red)
+	study.IsDraft = false
+	for _, uci := range []string{"a3a4", "a6a5"} {
+		m, err := domain.ParseMove(uci)
+		if err != nil {
+			t.Fatal(err)
+		}
+		study.Play(m)
+	}
+	a := New(t.TempDir(), "")
+	a.loading, a.showLibrary = false, false
+	s := session.New(study, nil, nil)
+	s.SetAI(domain.Black)
+	a.research = s
+	tt := native.NewTester(a.View, 1100, 850)
+	tt.SetPreferences(native.Preferences{ReduceMotion: true})
+	click(t, tt, "暂停托管") // Available even while waiting for the human.
+	click(t, tt, "回退")
+	if !s.Paused || s.Study.CurrentID != study.RootID || len(s.Study.Nodes) != 3 {
+		t.Fatal("footer undo did not preserve control and the saved line")
+	}
+	tt.Key(native.Alt, native.KeyRight)
+	if len(s.Study.History()) != 1 || !s.Paused {
+		t.Fatal("forward shortcut changed pause state")
+	}
+	tt.Key(native.Alt, native.KeyLeft)
+	if s.Study.CurrentID != study.RootID || !s.Paused {
+		t.Fatal("undo shortcut differed from the footer")
+	}
+	click(t, tt, "继续托管")
+	if s.Paused || s.AISide != domain.Black {
+		t.Fatal("resume changed the assigned AI side")
+	}
+	for _, size := range [][2]int{{1440, 900}, {960, 680}} {
+		tt.SetSize(size[0], size[1])
+		for _, label := range []string{"起点", "回退", "前进", "AI 执黑", "暂停托管"} {
+			r, ok := tt.Find(label)
+			if !ok || r.X < 0 || r.X+r.W > float32(size[0]) || r.Y < 0 || r.Y+r.H > float32(size[1]) {
+				t.Fatalf("control %q is outside the %dx%d window: %+v", label, size[0], size[1], r)
+			}
+		}
+		if directory := os.Getenv("XIANGQI_UI_PROBES"); directory != "" {
+			if err := os.MkdirAll(directory, 0755); err != nil {
+				t.Fatal(err)
+			}
+			name := "research-wide.png"
+			if size[0] == 960 {
+				name = "research-narrow.png"
+			}
+			f, err := os.Create(filepath.Join(directory, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = png.Encode(f, tt.Image())
+			closeErr := f.Close()
+			if err != nil || closeErr != nil {
+				t.Fatalf("save preview: %v %v", err, closeErr)
+			}
+		}
+	}
+	click(t, tt, "AI 执黑")
+	if err := tt.ChooseMenuItem("我执黑 / AI 执红"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(native.Alt, native.KeyRight) // Only the AI opening is on the line.
+	if len(s.Study.History()) != 1 || s.CanBack() {
+		t.Fatal("the AI opening should not be undoable as a human move")
+	}
+	current := s.Study.CurrentID
+	click(t, tt, "回退")
+	tt.Key(native.Alt, native.KeyLeft)
+	if s.Study.CurrentID != current {
+		t.Fatal("disabled undo button or shortcut removed the AI opening")
+	}
+	click(t, tt, "AI 执红")
+	if err := tt.ChooseMenuItem("双方手动"); err != nil {
+		t.Fatal(err)
+	}
+	click(t, tt, "回退")
+	if s.Study.CurrentID != study.RootID || s.AISide != "" {
+		t.Fatal("manual mode did not undo one move")
+	}
+}
 
 func click(t *testing.T, tt *native.Tester, label string) {
 	t.Helper()

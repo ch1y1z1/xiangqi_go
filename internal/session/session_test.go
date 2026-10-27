@@ -157,12 +157,17 @@ func TestContractSurface(t *testing.T) {
 		Tap(domain.Square)
 		Drag(domain.Square, domain.Square)
 		Jump(string)
+		CanBack() bool
 		Back()
 		Forward() bool
 		Root()
 		Flip()
 		SetAI(domain.Side)
+		PauseAI()
 		ResumeAI()
+		AutomaticTurn() bool
+		AIBlocked() bool
+		CanRecommend() bool
 		Recommend()
 		Adopt()
 		Stop()
@@ -352,7 +357,7 @@ func TestQueuedResultRejectedAfterBudgetModeOrSetupChange(t *testing.T) {
 	}
 }
 
-func TestThreeModesPauseNavigationAndExplicitRecommendation(t *testing.T) {
+func TestThreeModesNavigationAndExplicitRecommendation(t *testing.T) {
 	h := newHarness(t, initialStudy(), false)
 	h.activate(false)
 	s := h.s
@@ -372,20 +377,22 @@ func TestThreeModesPauseNavigationAndExplicitRecommendation(t *testing.T) {
 		t.Fatal("automatic black move missing")
 	}
 	s.Back()
-	if !s.Paused {
-		t.Fatal("Back must pause AI")
+	if s.Paused || s.AISide != domain.Black || s.Study.CurrentID != s.Study.RootID || len(s.Study.Nodes) != 3 {
+		t.Fatal("Back must return before the human move, keeping AI and branches")
 	}
 	h.reply(h.next("inspect"), answer{rules: rules()})
 	h.noJob()
-	s.ResumeAI()
-	retry := h.next("search")
 	s.Recommend()
-	receive(t, h.f.stops)
-	retry.reply <- answer{result: result}
-	h.dispatch()
+	h.reply(h.next("search"), answer{result: score(20)})
+	if s.Paused || s.Suggestion == nil || len(s.Study.History()) != 0 {
+		t.Fatal("recommendation must leave AI running without automatically adopting")
+	}
+	s.Adopt()
+	h.reply(h.next("inspect"), answer{rules: rules()})
 	h.reply(h.next("search"), answer{result: result})
-	if !s.Paused || s.Suggestion == nil || len(s.Study.History()) != 1 {
-		t.Fatal("recommendation triggered automatic adoption")
+	h.reply(h.next("inspect"), answer{rules: rules()})
+	if len(s.Study.Nodes) != 3 || len(s.Study.History()) != 2 {
+		t.Fatal("adoption should reuse the line and let AI reply")
 	}
 	s.SetAI("")
 	if s.AISide != "" || s.Paused || s.Suggestion != nil {

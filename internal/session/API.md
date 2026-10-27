@@ -7,7 +7,7 @@
 ## 实际公开状态
 
 - `Study domain.Study`、`Rules engine.Snapshot`、`Selected *domain.Square`、`Suggestion *engine.Result`。
-- `AISide domain.Side`：空串双方手动，Black 我红 AI 黑，Red 我黑 AI 红；`Paused bool`。
+- `AISide domain.Side`：空串双方手动，Black 我红 AI 黑，Red 我黑 AI 红；`Paused bool` 表示用户明确暂停。局面导航和引擎失败不暗改这两个状态。
 - `Busy bool`：后台分支 inspect 或任意 search；`RulesBusy bool`：当前节点规则 inspect。新增 `AnalyzingID string` 区分后台评分目标，主动 AI 时为空。停止按钮可在 Busy 或 RulesBusy 时启用。
 - `Active, Saved bool`、`Error string`、`Budget int`（毫秒，默认 1000；标准预设 300/1000/3000）。
 - `ShowLights, ShowEvaluation, ShowBranchScores bool`（默认全开）、`BranchParentID string`。
@@ -23,12 +23,17 @@ Leave()
 Tap(domain.Square)
 Drag(domain.Square, domain.Square)
 Jump(id string)
+CanBack() bool
 Back()
 Forward() bool
 Root()
 Flip()
 SetAI(domain.Side)
+PauseAI()
 ResumeAI()
+AutomaticTurn() bool
+AIBlocked() bool
+CanRecommend() bool
 Recommend()
 Adopt()
 Stop()
@@ -45,11 +50,13 @@ Comparison(id, parentID string) string
 ApplyEdit(domain.Study) error
 ```
 
-Forward 遇未选择的多分支返回 false；UI 展示分支选择后调用 Jump。Jump/Back/Forward/Root 暂停托管。ResumeAI 显式恢复。Recommend 暂停现有托管，只生成建议；Adopt 才落子，采用后托管仍保持暂停，需 ResumeAI 恢复。
+Forward 遇未选择的多分支返回 false；UI 展示分支选择后调用 Jump。Jump/Back/Forward/Root 保留控制方与暂停状态，旧请求失效后按新局面调度。Back 在人机模式下回到当前线路最近一手我方落子之前，连同之后的 AI 应手一起撤回；当前我方颜色为 AISide 的对方，暂停或采用建议不改变身份。双方手动时退最近一手。CanBack 为 false 时 Back 不取消任务、不改变局面；UI 与快捷键使用同一目标规则。
 
-调度优先级为主动建议/托管、当前评分、展开组的即时子局面评分；每次一项。当前/分支评分开关互不联动，且不会取消主动建议/托管。关闭展开组取消不再需要的背景任务。Stop 取消当前任务、清建议、暂停托管，并阻止自动重启；Recommend、ResumeAI、Reanalyze 或切换局面/预算等明确操作可重新启动。
+PauseAI/ResumeAI 显式暂停或继续；暂停只取消自动落子，不取消仍然有效的规则检查、手动建议或后台评分。更换 AI 控制方保留已有暂停状态，重复选择当前控制方不恢复。双方手动切换为 AI 模式视为启动托管。AutomaticTurn 表示按控制设置轮到 AI，不代表正在搜索；终局、规则检查或故障可能阻止任务。AIBlocked 表示当前自动行棋被故障阻止。CanRecommend 供 UI 判断当前是否允许手动建议；自动回合调用 Recommend 不抢占自动行棋，应先显式暂停。其他回合的 Recommend 只生成建议，不改暂停状态，Adopt 才落子；我方采用建议后，运行中的 AI 会正常应手。
 
-Reanalyze 清当前节点及当前展开组子节点的评分/失败缓存，并重试当前规则错误；仍遵守两个评分开关。自动 AI 失败后暂停，恢复用 ResumeAI；建议失败重试用 Recommend。失败的背景评分不会因为开关反复切换而自动重试，详情经 EvalDetail 返回。未获有效分数显示“待评估 / 计算中… / 未获评分”，合法建议可以没有有效评分。
+调度优先级为主动建议/托管、当前评分、展开组的即时子局面评分；每次一项。展开或收起分支比较不取消自动行棋或改变暂停状态。当前/分支评分开关互不联动，且不会取消主动建议/托管。Stop 在自动回合等同显式 PauseAI（如 Escape）；在其他回合只停止本次分析、清建议并阻止其立即重启，不改变托管设置。Recommend、ResumeAI、Reanalyze 或切换局面/预算等明确操作可重新启动。
+
+Reanalyze 清当前节点及当前展开组子节点的评分/失败缓存，并重试当前规则错误；仍遵守两个评分开关。自动 AI 或规则检查失败保留托管设置，阻止自动重复请求，以 Reanalyze 显式重试；建议失败用 Recommend 重试。终局不设置暂停，导航到非终局后重新判断。失败的背景评分不会因为开关反复切换而自动重试，详情经 EvalDetail 返回。未获有效分数显示“待评估 / 计算中… / 未获评分”，合法建议可以没有有效评分。
 
 评分缓存包含完整路径节点、起点 FEN/root/study、预算、固定引擎提交和 NNUE 标识；生命周期限制在该 Session 和不可替换的 backend 中。预算变化清缓存；ApplyEdit 即使 root ID 未改，只要初始棋子/先行方改变也清缓存。仅改名/朝向保留有效评分。换引擎/模型请新建 Session。
 

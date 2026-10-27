@@ -360,23 +360,30 @@ func (a *App) studyFooter(c *native.Context) {
 	s := a.research
 	native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
 		action(c, "起点", false, s.Study.CurrentID == s.Study.RootID, s.Root)
-		action(c, "回退", false, s.Study.CurrentID == s.Study.RootID, s.Back)
+		backHint := "撤回最近一手"
+		if s.AISide != "" {
+			backHint = "回到我方上一手之前，保留原分支与托管状态"
+		}
+		action(c, "回退", false, !s.CanBack(), s.Back).Tooltip(backHint)
 		n := s.Study.Node(s.Study.CurrentID)
 		action(c, "前进", false, n == nil || len(n.Children) == 0, a.forward)
 		native.Box(c).Grow(1)
-		if s.Busy {
-			action(c, "停止", true, false, s.Stop)
+		if !s.RulesBusy && s.Rules.Error != "" {
+			action(c, "重新检查", true, false, s.Reanalyze)
+		} else if s.AutomaticTurn() {
+			if s.AIBlocked() {
+				action(c, "重试 AI", true, false, s.Reanalyze)
+			}
+		} else if s.Busy {
+			action(c, "停止分析", true, false, s.Stop)
 		} else if s.Suggestion != nil {
 			action(c, "采用建议", true, false, s.Adopt)
 		} else {
-			action(c, "AI 建议", true, s.RulesBusy || s.Rules.Finished, s.Recommend)
+			action(c, "AI 建议", true, !s.CanRecommend(), s.Recommend)
 		}
 		label := "双方手动"
 		if s.AISide != "" {
-			label = "AI 执" + s.AISide.Title()
-			if s.Paused {
-				label += " · 已暂停"
-			}
+			label = "AI 执" + strings.TrimSuffix(s.AISide.Title(), "方")
 		}
 		native.MenuButton(c, label, func(m *native.Menu) {
 			if m.Item("双方手动").Checked(s.AISide == "").Chosen() {
@@ -388,20 +395,54 @@ func (a *App) studyFooter(c *native.Context) {
 			if m.Item("我执黑 / AI 执红").Checked(s.AISide == domain.Red).Chosen() {
 				s.SetAI(domain.Red)
 			}
-			if s.Paused && m.Item("恢复托管").Chosen() {
-				s.ResumeAI()
+			if s.AISide != "" {
+				if s.Paused {
+					if m.Item("继续托管").Chosen() {
+						s.ResumeAI()
+					}
+				} else if m.Item("暂停托管").Chosen() {
+					s.PauseAI()
+				}
 			}
 		})
+		if s.AISide != "" {
+			if s.Paused {
+				action(c, "继续托管", false, false, s.ResumeAI)
+			} else {
+				action(c, "暂停托管", false, false, s.PauseAI)
+			}
+		}
 	})
-	label := "双方手动推演 · 回退改走保留分支"
-	if s.Busy {
-		label = "AI 正在思考…"
-	} else if s.Paused {
-		label = "托管已暂停，确认局面后选择恢复"
-	} else if s.Suggestion != nil {
-		label = "建议已就绪，点击采用才会落子"
+	native.Text(c, a.researchStatus()).FontSize(12).TextColor(muted).MinHeight(22)
+}
+
+func (a *App) researchStatus() string {
+	s := a.research
+	switch {
+	case s.RulesBusy:
+		return "正在检查当前局面…"
+	case s.Rules.Error != "":
+		return "当前局面检查失败，请重新分析"
+	case s.Rules.Finished:
+		return "本局已结束，可回退改走；托管设置保持不变"
+	case s.AIBlocked():
+		return "AI 分析失败，请重试；托管设置已保留"
+	case s.Suggestion != nil:
+		return "建议已就绪，点击采用才会落子"
+	case s.Busy && s.AnalyzingID == "":
+		if s.AutomaticTurn() {
+			return "AI 正在思考…"
+		}
+		return "正在计算建议…"
+	case s.Paused:
+		return "托管已暂停，可手动研究双方；继续后从当前局面接管"
+	case s.AISide != "":
+		return "等待你落子 · 回退可改走我方上一手"
+	case s.Busy:
+		return "正在评估局面…"
+	default:
+		return "双方手动推演 · 回退改走保留分支"
 	}
-	native.Text(c, label).FontSize(12).TextColor(muted).MinHeight(22)
 }
 
 func (a *App) tools(c *native.Context) {
@@ -552,7 +593,9 @@ func (a *App) studyTools(c *native.Context) {
 	rule(c)
 	section(c, "AI 建议")
 	native.Column(c).Padding(14).Gap(8).MinHeight(116).Background(teal.Alpha(0.07)).Radius(12).Children(func() {
-		if s.Busy {
+		if s.RulesBusy {
+			native.Text(c, "正在检查当前局面…").FontSize(13).TextColor(muted)
+		} else if s.Busy && s.AnalyzingID == "" {
 			native.Row(c).Gap(9).Children(func() { native.Spinner(c); native.Text(c, "正在思考…") })
 		} else if s.Suggestion != nil {
 			move, err := domain.ParseMove(s.Suggestion.BestMove)
@@ -563,14 +606,14 @@ func (a *App) studyTools(c *native.Context) {
 			native.Text(c, label).FontSize(22).FontWeight(600).TextColor(teal)
 			native.Text(c, s.EvalText(s.Study.CurrentID)).FontSize(13).TextColor(muted)
 			action(c, "查看参考变化", false, len(s.Suggestion.PV) == 0, func() { a.pvOpen = true })
+		} else if s.AIBlocked() {
+			native.Text(c, "AI 分析失败，托管设置已保留。").FontSize(13).TextColor(muted)
+			action(c, "重试当前局面", false, false, s.Reanalyze)
 		} else {
 			native.Text(c, "请求建议后会显示推荐与评分").FontSize(13).TextColor(muted)
 			native.Text(c, "采用才落子，参考变化不会改变研究。 ").FontSize(12).TextColor(muted)
 		}
 	})
-	if s.Paused {
-		action(c, "恢复 AI 托管", true, false, s.ResumeAI).FillWidth()
-	}
 	rule(c)
 	section(c, "显示与分析")
 	lights := s.ShowLights

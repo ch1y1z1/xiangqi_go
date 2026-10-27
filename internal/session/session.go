@@ -134,6 +134,17 @@ func (s *Session) Leave() {
 func (s *Session) controlled() bool {
 	return s.AISide != "" && s.AISide == s.Study.SideToMove() && !s.Paused
 }
+
+// AutomaticTurn reports whose turn the current control settings assign to AI.
+// It does not imply that a search is running (rules, terminal or error may block it).
+func (s *Session) AutomaticTurn() bool { return s.controlled() }
+
+func (s *Session) AIBlocked() bool {
+	return s.controlled() && s.job == nil && (s.halted || (s.rulesReady && s.Rules.Error != ""))
+}
+
+func (s *Session) CanRecommend() bool { return s.playable() && !s.controlled() }
+
 func (s *Session) playable() bool {
 	return s.Active && s.rulesReady && !s.RulesBusy && s.Rules.Error == "" && !s.Rules.Finished
 }
@@ -190,9 +201,6 @@ func (s *Session) Jump(id string) {
 		return
 	}
 	s.invalidate()
-	if s.AISide != "" {
-		s.Paused = true
-	}
 	s.BranchParentID = ""
 	s.rememberLine(id)
 	s.Study.CurrentID = id
@@ -202,9 +210,28 @@ func (s *Session) Jump(id string) {
 	s.changed()
 }
 
+// backTarget is before the most recent move by the currently assigned human
+// side on this line. Both manual sides belong to the user. Pausing AI does not
+// change that assignment, nor does adopting a recommendation.
+func (s *Session) backTarget() string {
+	line := s.Study.Line(s.Study.CurrentID)
+	for i := len(line) - 1; i >= 0; i-- {
+		mover := s.Study.InitialSide
+		if i%2 != 0 {
+			mover = mover.Opponent()
+		}
+		if s.AISide == "" || mover != s.AISide {
+			return line[i].ParentID
+		}
+	}
+	return ""
+}
+
+func (s *Session) CanBack() bool { return s.backTarget() != "" }
+
 func (s *Session) Back() {
-	if n := s.Study.Node(s.Study.CurrentID); n != nil && n.ParentID != "" {
-		s.Jump(n.ParentID)
+	if target := s.backTarget(); target != "" {
+		s.Jump(target)
 	}
 }
 func (s *Session) Root() { s.Jump(s.Study.RootID) }
@@ -233,28 +260,52 @@ func (s *Session) Flip() {
 }
 
 func (s *Session) SetAI(side domain.Side) {
-	if side != "" && side != domain.Red && side != domain.Black {
+	if (side != "" && side != domain.Red && side != domain.Black) || side == s.AISide {
 		return
 	}
 	s.invalidate()
-	s.AISide, s.Paused, s.halted = side, false, false
+	if s.AISide == "" || side == "" {
+		s.Paused = false
+	}
+	s.AISide, s.halted = side, false
 	s.Error = ""
+	s.pump()
+	s.changed()
+}
+
+func (s *Session) PauseAI() {
+	if s.AISide == "" || s.Paused {
+		return
+	}
+	s.Paused = true
+	if s.job != nil && s.job.purpose == automaticSearch {
+		s.invalidate()
+	}
+	// Pausing moves does not cancel a valid rule check, hint or background score.
 	s.pump()
 	s.changed()
 }
 
 func (s *Session) ResumeAI() {
-	if s.AISide == "" {
+	if s.AISide == "" || !s.Paused {
 		return
 	}
 	s.invalidate()
 	s.Paused, s.halted = false, false
 	s.Error = ""
+	if s.Rules.Error != "" {
+		s.rulesReady = false
+	}
 	s.pump()
 	s.changed()
 }
 
 func (s *Session) Recommend() {
+	// On an automatic turn the user explicitly pauses first. A hint must not
+	// silently change control settings or compete with automatic adoption.
+	if s.controlled() {
+		return
+	}
 	if !s.Active {
 		s.Activate()
 	}
@@ -263,9 +314,6 @@ func (s *Session) Recommend() {
 	}
 	s.invalidate()
 	// An explicit recommendation never becomes an automatic move afterwards.
-	if s.AISide != "" {
-		s.Paused = true
-	}
 	s.halted, s.pendingRecommendation = false, true
 	s.Error = ""
 	s.pump()
@@ -273,7 +321,7 @@ func (s *Session) Recommend() {
 }
 
 func (s *Session) Adopt() {
-	if s.Suggestion == nil || !s.playable() {
+	if s.Suggestion == nil || !s.playable() || s.controlled() {
 		return
 	}
 	move, err := domain.ParseMove(s.Suggestion.BestMove)
@@ -283,9 +331,20 @@ func (s *Session) Adopt() {
 }
 
 func (s *Session) Stop() {
+	// Escape stops automatic play explicitly; stopping an analysis on the human
+	// turn leaves the AI role and pause state alone.
+	if s.controlled() {
+		s.PauseAI()
+		return
+	}
+	stoppedRules := !s.rulesReady && s.job != nil && s.job.purpose == rulesTask
 	s.invalidate()
-	if s.AISide != "" {
-		s.Paused = true
+	if stoppedRules {
+		// Without a rule snapshot, manual moves cannot be accepted. Expose the
+		// stopped check so the UI offers a retry instead of waiting for a move.
+		s.Rules.Error = "局面检查已停止，请重新检查"
+		s.rulesReady = true
+		s.Error = s.Rules.Error
 	}
 	s.halted = true
 	s.changed()
@@ -337,12 +396,7 @@ func (s *Session) OpenBranches(parentID string) {
 	if s.Study.Node(parentID) == nil {
 		return
 	}
-	if s.controlled() || (s.job != nil && s.job.purpose == automaticSearch) {
-		s.invalidate()
-		s.Paused = true
-	}
 	s.BranchParentID = parentID
-	s.halted = false
 	s.reconcileBackground()
 	s.pump()
 	s.changed()
@@ -643,9 +697,6 @@ func (s *Session) inspect(kind purpose, id string, hints bool) {
 				if result.Error != "" {
 					s.Error = "规则检查失败：" + result.Error
 					s.failures[id] = evaluationFailure{r.targetKey, s.Error + "；请重新分析。"}
-					if s.AISide != "" {
-						s.Paused = true
-					}
 					s.pendingRecommendation = false
 				}
 				s.pump()
@@ -707,9 +758,6 @@ func (s *Session) search(kind purpose, id string) {
 			if err != nil {
 				s.Error = "AI 分析失败：" + err.Error()
 				s.failures[id] = evaluationFailure{r.targetKey, s.Error}
-				if s.AISide != "" {
-					s.Paused = true
-				}
 				s.halted = true
 				s.changed()
 				return
