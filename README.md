@@ -10,7 +10,7 @@
 | Windows x64 | `windows-amd64-setup.exe` 安装包与 `windows-amd64.zip` 便携包 |
 | Linux x64 | `linux-amd64.deb` 与 `linux-amd64.tar.gz` |
 
-包名带应用版本，例如 `xiangqi-0.1.0-macos-arm64.dmg`；每次发布附带 `SHA256SUMS.txt`。Windows 便携包须完整解压，不能只复制主程序。Linux 需要 GTK 3、WebKitGTK 4.1 和中文字体；Ubuntu 24.04 可安装 `libgtk-3-0t64 libwebkit2gtk-4.1-0 fonts-noto-cjk`。图片识别密钥使用 macOS Keychain、Windows Credential Manager 或 Linux Secret Service；Linux 需要已解锁的 GNOME Keyring 或兼容服务。
+包名带应用版本，例如 `xiangqi-0.1.2-macos-arm64.dmg`；每次发布附带 `SHA256SUMS.txt`。Windows 便携包须完整解压，不能只复制主程序。Linux 需要 GTK 3、WebKitGTK 4.1 和中文字体；Ubuntu 24.04 可安装 `libgtk-3-0t64 libwebkit2gtk-4.1-0 fonts-noto-cjk`。图片识别密钥使用 macOS Keychain、Windows Credential Manager 或 Linux Secret Service；Linux 需要已解锁的 GNOME Keyring 或兼容服务。
 
 macOS 下载包使用 ad hoc 签名，尚未配置 Developer ID 和公证；首次打开被拦截时，可在系统设置“隐私与安全性”中允许。Windows 包尚未配置代码签名，可能显示 SmartScreen 提示。macOS Apple Silicon 已实际运行验收；Windows/Linux 的交互界面仍需实机验收。
 
@@ -26,6 +26,16 @@ macOS 下载包使用 ad hoc 签名，尚未配置 Developer ID 和公证；首�
 安全吃子绿灯表示当前合法吃子后没有立即合法回吃，不代表多步战术绝对安全。评分统一从红方观察；翻转棋盘不会反转评分含义。
 
 图片识别在设置中选择 DeepSeek 或自定义服务，后者支持 Chat Completions / Responses，需支持图片和 JSON 输出。两类服务的密钥分别存入系统凭据库；配置 JSON 不含密钥。只有点击识别才发送图片，不自动重试付费请求。
+
+应用默认每天自动检查 GitHub Releases 中的新版本，并通过中文原生窗口显示更新说明。可在设置中关闭自动检查，或开启“自动下载并安装”（默认关闭，安装后下次启动生效）；更新选项立即保存。文件菜单和设置都提供“检查更新”。下载的更新包必须通过内置公钥的签名校验。首次启用此功能的版本需要手动下载安装，之后才能接收应用内更新。
+
+自动更新需要应用所在目录可写：macOS 请将应用拖入 Applications 后运行，Windows 使用当前用户安装或可写的便携目录，Linux 使用解压后的用户目录。通过 `.deb` 等包管理器安装的应用由包管理器升级；开发模式不执行后台更新。
+
+错误和崩溃日志默认只保存在本机。在设置的“诊断日志”中可以打开日志文件夹，或预览并导出 ZIP 诊断包。macOS 日志目录为 `~/Library/Logs/象棋残局/`；Windows 为 `%APPDATA%/象棋残局/logs/`；Linux 为 `$XDG_CONFIG_HOME/象棋残局/logs/`（未设置时为 `~/.config/象棋残局/logs/`）。使用 `--data-dir` 时，日志放在指定目录下的 `logs/`。
+
+每次启动在 `sessions/` 下创建独立目录，保存 `app.log`（运行事件和引擎诊断）、`crash.log`（Go 崩溃堆栈）、`stderr.log`（主进程错误输出）与 `session.json`（版本和结束状态）。运行日志按 2 MiB 轮转，保留 3 份；启动时保留最近 10 个已结束会话，活动会话不清理。崩溃文件保留完整内容，因此该规则不是整个目录的硬容量上限。
+
+重启发现未正常结束的会话时提示一次；强制结束或断电不能保证留下堆栈，也不能仅凭该状态认定代码崩溃。原生库的完整调用栈仍可能需要系统崩溃报告辅助。诊断包只包含白名单日志及版本元数据，不打包棋谱、图片、设置或更新签名密钥；原始崩溃信息可能含本地路径和异常文本，请先预览再导出。日志文件创建或写入失败会给出提示，仍可继续使用应用。
 
 | 快捷键 | 操作 |
 | --- | --- |
@@ -76,14 +86,18 @@ macOS 的 HEIC 处理使用系统 `sips`。中文棋子优先加载本机已安�
 
 [CI and Release](https://github.com/ch1y1z1/xiangqi_go/actions/workflows/ci.yml) 在每次推送、PR 和手动触发时构建四个目标：macOS arm64/amd64、Windows amd64、Linux amd64。每个平台检查 Go 格式、运行 `go vet`、race 单元测试和真实离线引擎测试，再打包并校验实际安装目录里的引擎和 NNUE。普通构建的下载包保留在 Actions artifacts 中 14 天。
 
-发布步骤：先修改 `mygo.json` 的 `version` 并提交，再推送匹配的 `v<version>` 标签：
+更新包使用独立的 Ed25519 密钥签名，与 macOS/Windows 的应用代码签名分别管理。仓库只保存 `mygo.json` 中的公钥；对应私钥通过仓库 Actions secret `MYGO_UPDATER_PRIVATE_KEY` 提供。签名私钥需要单独备份并持续使用，不能随意换成新密钥，否则已安装的应用将无法验证后续更新。首次为自己的仓库配置时运行 `go tool mygo keygen -o /secure/path/update-keys`，将公钥填入配置，并用 `gh secret set MYGO_UPDATER_PRIVATE_KEY --repo owner/repo < /secure/path/update-keys/mygo-update.key` 上传私钥；不要提交私钥。
+
+发布步骤：修改 `mygo.json` 的 `version`，并在 `CHANGELOG.md` 添加对应的 `## <version>` 更新说明，提交后推送匹配的 `v<version>` 标签：
 
 ```sh
-git tag -a v0.1.0 -m 'Release v0.1.0'
-git push origin v0.1.0
+git tag -a v0.1.2 -m 'Release v0.1.2'
+git push origin v0.1.2
 ```
 
-示例标签只适用于尚未发布的 0.1.0；后续发布应递增版本。CI 拒绝标签和应用版本不匹配的发布。全部目标通过后，发布作业核对所有下载包的 SHA-256，上传到草稿 Release，再将其正式发布。流程使用 GitHub 自带的 `GITHUB_TOKEN`，无需配置发布密钥；仅发布作业获得 `contents: write` 权限。
+每次发布都应递增版本，并使用与应用版本匹配的新标签。CI 拒绝标签、应用版本和更新清单版本不匹配的发布，缺少更新签名私钥或任一平台的签名包也会失败。全部目标通过后，发布作业核对所有下载文件的 SHA-256，上传到草稿 Release，再将其正式发布为 latest。除用户下载的安装包外，Release 还包含原名保留的更新归档、增量包（如有）及 `update-<os>-<arch>.json`；不要删除、重命名这些更新文件。下载包上传使用 GitHub 自带的 `GITHUB_TOKEN`；仅发布作业获得 `contents: write` 权限。
+
+普通分支和 PR 构建无需签名私钥，仍可生成下载包。需要在本机生成签名更新包时，将私钥通过 `MYGO_UPDATER_PRIVATE_KEY` 环境变量提供给构建命令；完成后运行 `python3 scripts/package-release.py --os darwin --arch arm64 --require-updates`（按本机平台调整）。更新窗口和 GitHub Release 的更新说明均读取当前版本的 `CHANGELOG.md` 段落。
 
 ## 资料
 

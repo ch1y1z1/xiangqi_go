@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ch1y1z1/xiangqi_go/internal/credentials"
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 	"github.com/ch1y1z1/xiangqi_go/internal/domain"
 	"github.com/ch1y1z1/xiangqi_go/internal/recognition"
 	"github.com/egoist/mygo"
@@ -53,6 +54,7 @@ func (a *App) loadImage(path string) {
 	generation := s.generation
 	go func() {
 		data, err := recognition.PrepareFile(path)
+		diagnostics.Error("prepare_image", err)
 		var bitmap *native.Bitmap
 		if err == nil {
 			bitmap, err = native.DecodeBitmap(data)
@@ -99,6 +101,7 @@ func (a *App) performRecognition() {
 		if err == nil {
 			err = a.jobs.Start(data, key, settings)
 		}
+		diagnostics.Error("start_recognition", err)
 		a.update(func() {
 			s.starting = false
 			if err != nil {

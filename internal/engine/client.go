@@ -11,12 +11,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 )
 
 const EngineCommit = "4c17cee11f888ae1d48a9494f2e2239f019f0a1f"
@@ -153,7 +157,7 @@ func startClient(cmd *exec.Cmd) (*Client, error) {
 	}
 	c.stdout = read
 	cmd.Stdout = write
-	cmd.Stderr = &c.stderr
+	cmd.Stderr = io.MultiWriter(&c.stderr, &stderrLogger{})
 	cmd.WaitDelay = controlTimeout
 	if err = cmd.Start(); err != nil {
 		_ = c.stdin.Close()
@@ -162,13 +166,24 @@ func startClient(cmd *exec.Cmd) (*Client, error) {
 		return nil, fmt.Errorf("start offline engine: %w", err)
 	}
 	_ = write.Close()
+	slog.Info("engine_started", "pid", cmd.Process.Pid)
 	go c.readLoop()
 	go c.writeLoop()
 	go func() {
+		defer close(c.exited)
 		err := cmd.Wait()
-		close(c.exited)
 		// Preserve the scanner's more useful protocol error when available.
 		<-c.readDone
+		if !errors.Is(c.failureError(), ErrClosed) {
+			if tail := c.Diagnostics(); tail != "" {
+				slog.Warn("engine_stderr_tail", "text", tail)
+			}
+			reason := "unexpected normal exit"
+			if err != nil {
+				reason = err.Error()
+			} // Wait errors contain process status, not request data.
+			slog.Error("engine_exited", "pid", cmd.Process.Pid, "exit_code", cmd.ProcessState.ExitCode(), "reason", reason)
+		}
 		if err == nil {
 			err = io.EOF
 		}
@@ -187,6 +202,9 @@ func (c *Client) fail(err error, kill bool) {
 	c.pending = make(map[string]chan response)
 	close(c.done)
 	c.mu.Unlock()
+	if !errors.Is(err, ErrClosed) {
+		diagnostics.Error("engine_connection", err)
+	}
 	_ = c.stdin.Close() // Also interrupts a writer blocked on a non-reading child.
 	if kill {
 		_ = c.cmd.Process.Kill()
@@ -215,6 +233,7 @@ func (c *Client) readLoop() {
 		delete(c.pending, r.ID)
 		c.mu.Unlock()
 		if ch != nil {
+			slog.Info("engine_response", "request_id", r.ID, "type", r.Type)
 			ch <- r
 		}
 	}
@@ -267,6 +286,7 @@ func (c *Client) begin(ctx context.Context, request map[string]any) (ticket, err
 	}
 	c.pending[t.id] = t.reply
 	c.mu.Unlock()
+	slog.Info("engine_request", "request_id", t.id, "operation", request["op"])
 	select {
 	case c.writes <- append(data, '\n'):
 		return t, nil
@@ -432,6 +452,7 @@ func (c *Client) Close() error {
 		select {
 		case <-c.exited:
 		case <-timer.C:
+			slog.Warn("engine_shutdown_timeout")
 			_ = c.cmd.Process.Kill()
 			<-c.exited
 		}
@@ -447,6 +468,38 @@ func (c *Client) Diagnostics() string {
 	c.stderr.mu.Lock()
 	defer c.stderr.mu.Unlock()
 	return string(c.stderr.data)
+}
+
+// Bound noisy child output while always consuming the stderr pipe. A logger
+// failure cannot prevent the protocol from making progress.
+type stderrLogger struct {
+	mu             sync.Mutex
+	window         time.Time
+	count, dropped int
+}
+
+func (w *stderrLogger) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := len(p)
+	if time.Since(w.window) >= time.Second {
+		if w.dropped > 0 {
+			slog.Warn("engine_stderr_suppressed", "chunks", w.dropped)
+		}
+		w.window, w.count, w.dropped = time.Now(), 0, 0
+	}
+	if w.count >= 10 {
+		w.dropped++
+		return n, nil
+	}
+	w.count++
+	if len(p) > 8192 {
+		p = p[len(p)-8192:]
+	}
+	if text := strings.TrimSpace(string(p)); text != "" {
+		slog.Warn("engine_stderr", "text", text, "truncated", n > 8192)
+	}
+	return n, nil
 }
 
 type tailBuffer struct {

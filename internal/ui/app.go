@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 	"github.com/ch1y1z1/xiangqi_go/internal/domain"
 	"github.com/ch1y1z1/xiangqi_go/internal/engine"
 	"github.com/ch1y1z1/xiangqi_go/internal/preferences"
@@ -51,6 +53,9 @@ type App struct {
 	libraryDrawer                               bool
 	library                                     native.ListState
 	settings                                    settingsState
+	diagnostic                                  diagnosticState
+	updates                                     *updateControls
+	detachUpdates                               func()
 	imageImport                                 importState
 	renameID, renameValue                       string
 	showRename                                  bool
@@ -77,7 +82,7 @@ func New(dataDir, resourcesDir string) *App {
 func (a *App) Shutdown() {
 	<-a.loadDone
 	if a.jobs != nil {
-		_ = a.jobs.Interrupt()
+		diagnostics.Error("interrupt_recognition_on_exit", a.jobs.Interrupt())
 	}
 	if a.loadedEngine != nil {
 		_ = a.loadedEngine.Close()
@@ -86,14 +91,20 @@ func (a *App) Shutdown() {
 	a.preferencesMu.Lock()
 	defer a.preferencesMu.Unlock()
 	if !a.loading {
-		_ = preferences.Save(filepath.Join(a.dataDir, "preferences.json"), a.prefs)
+		diagnostics.Error("save_preferences_on_exit", preferences.Save(filepath.Join(a.dataDir, "preferences.json"), a.prefs))
 	}
 }
 
 func (a *App) Attach(win *mygo.Window) {
 	a.win = win
+	a.attachUpdater()
 	a.installMenu()
 	win.OnClose(func(e *mygo.CloseEvent) {
+		if a.diagnostic.exporting {
+			e.PreventDefault()
+			a.status = "诊断包正在导出，请稍后关闭。"
+			return
+		}
 		if a.allowClose {
 			return
 		}
@@ -122,6 +133,7 @@ func (a *App) Attach(win *mygo.Window) {
 	})
 	win.OnClosed(func() {
 		a.closed = true
+		a.detachUpdates()
 		if a.research != nil {
 			a.research.Leave()
 		}
@@ -130,6 +142,13 @@ func (a *App) Attach(win *mygo.Window) {
 		}
 	})
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		slog.Info("quit_requested")
+		if a.diagnostic.exporting {
+			e.PreventDefault()
+			win.Show()
+			a.status = "诊断包正在导出，请稍后退出。"
+			return
+		}
 		if !a.allowClose && a.editor != nil && a.editor.dirty {
 			e.PreventDefault()
 			win.Show()
@@ -138,7 +157,7 @@ func (a *App) Attach(win *mygo.Window) {
 			return
 		}
 		if a.jobs != nil {
-			_ = a.jobs.Interrupt()
+			diagnostics.Error("interrupt_recognition_before_quit", a.jobs.Interrupt())
 		}
 	})
 	mygo.Power.OnSuspend(func() {
@@ -185,13 +204,16 @@ func resolveWorker(resources string) string {
 func (a *App) load() {
 	defer close(a.loadDone)
 	p, perr := preferences.Load(filepath.Join(a.dataDir, "preferences.json"))
+	diagnostics.Error("load_preferences", perr)
 	s, err := store.New(filepath.Join(a.dataDir, "Studies"))
 	if err != nil {
 		a.update(func() { a.loading = false; a.errorMessage = "残局库读取失败：" + err.Error() })
 		return
 	}
 	j, jerr := recognition.NewJobs(filepath.Join(a.dataDir, "Recognition"))
+	diagnostics.Error("restore_recognition_jobs", jerr)
 	e, eerr := engine.New(resolveWorker(a.resourcesDir), filepath.Join(a.resourcesDir, "pikafish.nnue"))
+	diagnostics.Error("initialize_engine", eerr)
 	a.loadedEngine = e
 	a.update(func() {
 		a.prefs = p
@@ -234,6 +256,7 @@ func (a *App) savePreferences() {
 			return
 		}
 		if err := preferences.Save(filepath.Join(a.dataDir, "preferences.json"), p); err != nil {
+			diagnostics.Error("save_preferences", err)
 			a.update(func() { a.errorMessage = "设置保存失败：" + err.Error() })
 		}
 	}()
@@ -257,6 +280,7 @@ func (a *App) guardEdit(fn func()) {
 }
 
 func (a *App) openStudy(study domain.Study) {
+	slog.Info("study_opened")
 	if study.IsDraft {
 		a.beginEdit(study)
 		return
@@ -497,7 +521,7 @@ func (a *App) installMenu() {
 	}
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
-		{Label: "文件", Submenu: []*mygo.MenuItem{{Label: "新建残局", Accelerator: "CmdOrCtrl+N", Click: click(a.newStudy)}, {Label: "保存", Accelerator: "CmdOrCtrl+S", Click: click(func() { a.saveEditor(false) })}, {Label: "从图片新建", Click: click(a.newFromImage)}, {Label: "设置…", Accelerator: "CmdOrCtrl+,", Click: click(a.openSettings)}, mygo.Separator(), {Role: mygo.RoleClose}, {Role: mygo.RoleQuit}}},
+		{Label: "文件", Submenu: []*mygo.MenuItem{{Label: "新建残局", Accelerator: "CmdOrCtrl+N", Click: click(a.newStudy)}, {Label: "保存", Accelerator: "CmdOrCtrl+S", Click: click(func() { a.saveEditor(false) })}, {Label: "从图片新建", Click: click(a.newFromImage)}, {Label: "设置…", Accelerator: "CmdOrCtrl+,", Click: click(a.openSettings)}, {Label: "检查更新…", Click: click(a.checkUpdates)}, mygo.Separator(), {Role: mygo.RoleClose}, {Role: mygo.RoleQuit}}},
 		{Role: mygo.RoleEditMenu},
 		{Label: "研究", Submenu: []*mygo.MenuItem{{Label: "编辑研究起点", Click: click(a.editCurrent)}, {Label: "回退", Accelerator: "Alt+Left", Click: click(func() {
 			if a.research != nil {

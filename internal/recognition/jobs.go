@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 	"github.com/ch1y1z1/xiangqi_go/internal/domain"
 )
 
@@ -240,12 +241,14 @@ func (j *Jobs) finish(id string, setup Setup, requestErr error) {
 		next.Status, next.Result, next.Error = Failed, nil, requestErr.Error()
 	}
 	if err := j.persist(next); err != nil {
+		diagnostics.Error("persist_recognition_result", err)
 		next.Status, next.Result, next.Error = Failed, nil, "无法保存识别结果，请检查任务目录是否可写。"
 		// Best effort to replace a prior running record; restoration of any
 		// remaining running record always fails closed, without network traffic.
 		_ = j.persist(next)
 	}
 	if err := j.cleanTransfers(); err != nil {
+		diagnostics.Error("clean_recognition_transfers", err)
 		next.Error = "无法清理识别临时文件，请检查任务目录权限。"
 	}
 	j.record, j.cancel = next, nil

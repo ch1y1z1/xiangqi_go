@@ -7,8 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 )
 
 const instruction = "请识别这张图片里的中国象棋残局，按约定输出 JSON。"
@@ -100,7 +104,9 @@ func Recognize(ctx context.Context, jpeg []byte, key string, settings Settings) 
 	return defaultClient.Recognize(ctx, jpeg, key, settings)
 }
 
-func (c *Client) Recognize(ctx context.Context, jpeg []byte, key string, settings Settings) (Setup, error) {
+func (c *Client) Recognize(ctx context.Context, jpeg []byte, key string, settings Settings) (out Setup, resultErr error) {
+	started := time.Now()
+	defer func() { diagnostics.Operation("recognition", started, resultErr) }()
 	ctx, cancel := context.WithTimeout(ctx, settings.timeout())
 	defer cancel()
 	req, err := Request(ctx, jpeg, key, settings)
@@ -117,6 +123,7 @@ func (c *Client) Recognize(ctx context.Context, jpeg []byte, key string, setting
 		return Setup{}, errors.New("识别请求未完成，请检查网络后手动重试。")
 	}
 	defer response.Body.Close()
+	slog.Info("recognition_response", "status_code", response.StatusCode)
 	if err := ctx.Err(); err != nil {
 		return Setup{}, err
 	}

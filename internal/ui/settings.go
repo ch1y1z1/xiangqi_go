@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ch1y1z1/xiangqi_go/internal/credentials"
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 	"github.com/ch1y1z1/xiangqi_go/internal/preferences"
 	"github.com/ch1y1z1/xiangqi_go/internal/recognition"
 	native "github.com/egoist/mygo/ui"
@@ -49,6 +50,7 @@ func (a *App) settingsDialog(c *native.Context) {
 			native.Checkbox(c, &s.draft.ShowBranchScores, "分支比较评分").Disabled(s.saving)
 			native.Checkbox(c, &s.draft.ShowLights, "安全吃子红绿灯").Disabled(s.saving)
 			rule(c)
+			a.updateSettings(c)
 			section(c, "图片识别服务")
 			r := &s.draft.Recognition
 			native.Row(c).Gap(20).Children(func() {
@@ -96,8 +98,9 @@ func (a *App) settingsDialog(c *native.Context) {
 				native.Text(c, "请求地址："+endpoint).FontSize(12).TextColor(muted)
 			}
 			rule(c)
+			a.diagnosticSettings(c)
 			section(c, "关于")
-			native.Text(c, "象棋残局 0.1.0 · mygo Native UI\nPikafish 离线引擎 · 本地 JSON 残局\n代码 GPL-3.0；NNUE 使用遵循上游独立条款。").FontSize(12).TextColor(muted)
+			native.Text(c, "象棋残局 "+applicationVersion()+" · mygo Native UI\nPikafish 离线引擎 · 本地 JSON 残局\n代码 GPL-3.0；NNUE 使用遵循上游独立条款。").FontSize(12).TextColor(muted)
 		})
 		if s.error != "" {
 			native.Text(c, s.error).TextColor(red).FontSize(13)
@@ -154,6 +157,7 @@ func (a *App) saveSettings() {
 		a.update(func() {
 			s.saving = false
 			if err != nil {
+				diagnostics.Error("save_settings", err)
 				s.error = fmt.Sprintf("设置保存失败：%s", err)
 				return
 			}

@@ -13,3 +13,4 @@
 .env
 .env.*
 __pycache__/
+mygo-update.key

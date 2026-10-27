@@ -51,6 +51,15 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/package-release.py --check-version "$RELEASE_TAG"
+      - name: Require update signing key for releases
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$MYGO_UPDATER_PRIVATE_KEY" ]]; then
+            echo 'Configure the repository secret MYGO_UPDATER_PRIVATE_KEY before releasing.' >&2
+            exit 1
+          fi
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -92,9 +101,16 @@ jobs:
           XIANGQI_ENGINE_INTEGRATION: '1'
         run: go test -race -count=1 -timeout=5m -v ./internal/engine
       - name: Build app and installers
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.MYGO_UPDATER_PRIVATE_KEY || '' }}
         run: python scripts/build-desktop.py --platform '${{ matrix.os }}/${{ matrix.arch }}'
       - name: Verify bundle and package release assets
-        run: python scripts/package-release.py --os '${{ matrix.os }}' --arch '${{ matrix.arch }}'
+        run: |
+          update_args=()
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            update_args+=(--require-updates)
+          fi
+          python scripts/package-release.py --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' "${update_args[@]}"
       - name: Upload release assets
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -114,6 +130,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*
@@ -122,10 +141,14 @@ jobs:
       - name: Verify assets and generate checksums
         run: |
           cd dist
-          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 10
+          for target in darwin-arm64 darwin-amd64 windows-amd64 linux-amd64; do
+            test -s "update-$target.json"
+          done
           sha256sum --check ./*.sha256
           cat ./*.sha256 | sort -k2 > SHA256SUMS.txt
           rm -- *.sha256
+      - name: Prepare release notes
+        run: python scripts/package-release.py --release-notes "$RUNNER_TEMP/release-notes.md"
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -138,6 +161,7 @@ jobs:
           else
             gh release create "$RELEASE_TAG" dist/* --draft \
               --verify-tag --title "象棋残局 $RELEASE_TAG" \
-              --notes-file .github/release-notes.md
+              --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
+          gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           gh release edit "$RELEASE_TAG" --draft=false --latest

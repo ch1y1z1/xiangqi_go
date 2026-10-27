@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/ch1y1z1/xiangqi_go/internal/diagnostics"
 	"github.com/ch1y1z1/xiangqi_go/internal/domain"
 )
 
@@ -29,7 +31,9 @@ type Store struct {
 // If some files cannot be read, it returns the usable Store AND an error naming
 // them. A directory creation/read failure returns nil and an error. Interrupted
 // seeding resumes from a small manifest, preserving the already generated IDs.
-func New(directory string) (*Store, error) {
+func New(directory string) (result *Store, err error) {
+	started := time.Now()
+	defer func() { diagnostics.Operation("load_library", started, err) }()
 	abs, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, err
@@ -93,7 +97,9 @@ func (s *Store) List() []domain.Study {
 	return studies
 }
 
-func (s *Store) Save(study domain.Study) error {
+func (s *Store) Save(study domain.Study) (err error) {
+	started := time.Now()
+	defer func() { diagnostics.Operation("save_study", started, err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.save(study)
@@ -127,7 +133,9 @@ func (s *Store) save(study domain.Study) error {
 	return nil
 }
 
-func (s *Store) SaveEdited(study domain.Study) error {
+func (s *Store) SaveEdited(study domain.Study) (err error) {
+	started := time.Now()
+	defer func() { diagnostics.Operation("save_edited_study", started, err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := validateStudy(study); err != nil {
@@ -144,7 +152,9 @@ func (s *Store) SaveEdited(study domain.Study) error {
 	return s.save(study)
 }
 
-func (s *Store) Delete(id string) error {
+func (s *Store) Delete(id string) (err error) {
+	started := time.Now()
+	defer func() { diagnostics.Operation("delete_study", started, err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !validID(id) {

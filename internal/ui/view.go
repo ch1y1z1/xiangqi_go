@@ -653,6 +653,7 @@ func (a *App) dialogs(c *native.Context) {
 	a.importDialog(c)
 	a.sourceDialog(c)
 	a.settingsDialog(c)
+	a.diagnosticDialogs(c)
 	if a.confirmOpen {
 		which := native.AlertDialog(c, &a.confirmOpen, a.confirmTitle, a.confirmMessage, "取消", a.confirmButton)
 		if which == 1 {
