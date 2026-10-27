@@ -1,11 +1,15 @@
 {
   "name": "象棋残局",
   "identifier": "com.chiyizi.xiangqi.desktop",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "main": "./cmd/xiangqi",
   "out": "build",
   "icon": "resources/icon.png",
   "resources": ["LICENSE"],
+  "updates": {
+    "github": "ch1y1z1/xiangqi_go",
+    "publicKey": "gZ9v5M+t/R34HZkfVavM4xXiHFKIAnha8Lvh208xXmM="
+  },
   "macos": { "minimumSystemVersion": "14.0" },
   "linux": { "categories": ["Game"], "comment": "离线象棋残局研究", "depends": ["fonts-noto-cjk"], "command": "xiangqi" }
 }
